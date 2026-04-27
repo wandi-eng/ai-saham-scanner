@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 
 # Konfigurasi Halaman Utama & Tema Gelap
-st.set_page_config(page_title="AI Stock Scanner & Predictor", layout="wide")
+st.set_page_config(page_title="Prediksi & Analyzer Saham", layout="wide")
 
 if "hasil_scan" not in st.session_state:
     st.session_state.hasil_scan = None
