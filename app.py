@@ -4,16 +4,14 @@ import plotly.graph_objs as go
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import PolynomialFeatures
 
 # Konfigurasi Halaman Utama & Tema Gelap
-st.set_page_config(page_title="AI Prediksi & Analisis Saham", layout="wide")
+st.set_page_config(page_title="AI Stock Scanner & Predictor", layout="wide")
 
-# --- MENGAKTIFKAN MEMORI APLIKASI (SESSION STATE) ---
 if "hasil_scan" not in st.session_state:
     st.session_state.hasil_scan = None
 
-# Custom CSS untuk tampilan modern (Glassmorphism & Neon)
+# Custom CSS untuk tampilan modern
 st.markdown("""
     <style>
     .main { background-color: #0E1117; }
@@ -21,141 +19,139 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Sidebar Navigasi
 st.sidebar.title("🤖 AI Trading Assistant")
 menu = st.sidebar.radio("Pilih Mode Analisis:", 
-                        ["📈 AI Prediksi (Spesifik)", 
+                        ["📈 Prediksi Berbasis MA (Spesifik)", 
                          "🔍 Scanner Saham Naik (Global & ID)"])
 
-# --- FITUR BARU: INDIKATOR SUMBER DATA DI SIDEBAR ---
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📡 Status Sistem")
 st.sidebar.success("✅ **Terhubung (Real-Time)**\n\nSumber: Yahoo Finance API")
-st.sidebar.caption("Model AI: Polynomial Regression (Degree 3)")
-# ----------------------------------------------------
+st.sidebar.caption("Model AI: MA20/50 + Short-Term Linear Trend")
 
-# Daftar Saham untuk Scanner Otomatis (SUDAH DIPERBANYAK)
+# Daftar Saham untuk Scanner Otomatis
 DAFTAR_SAHAM = [
-    # --- SAHAM INDONESIA (LQ45 & Unggulan) ---
+    # Saham Indonesia
     "BBCA.JK", "BBRI.JK", "TLKM.JK", "GOTO.JK", "BRIS.JK", "BMRI.JK", "AMRT.JK",
     "ASII.JK", "UNTR.JK", "ICBP.JK", "INDF.JK", "ADRO.JK", "PGAS.JK", "ANTM.JK", 
-    "PTBA.JK", "KLBF.JK", "CPIN.JK", "BBNI.JK", "ITMG.JK", "AKRA.JK",
-    
-    # --- SAHAM AMERIKA / GLOBAL ---
-    "AAPL", "TSLA", "NVDA", "MSFT", "GOOGL", "META", "AMZN", "NFLX", "AMD", "INTC"
+    # Saham Global
+    "AAPL", "TSLA", "NVDA", "MSFT", "GOOGL", "META", "AMZN"
 ]
 
-# Fungsi Core AI 
+# Fungsi Core AI (Berbasis MA20 & 20-Day Trend)
 def hitung_prediksi_ai(ticker):
     try:
         data = yf.download(ticker, period="1y", progress=False)
-        if len(data) < 50: return None, None, None
+        if len(data) < 50: return None, None, None, None, None
         
-        # Proses Machine Learning (Polynomial)
-        data['Hari_Ke'] = np.arange(len(data))
-        X = data[['Hari_Ke']].values
-        y = data['Close'].squeeze().values
+        # Menghitung MA20 dan MA50
+        data['MA20'] = data['Close'].rolling(window=20).mean()
+        data['MA50'] = data['Close'].rolling(window=50).mean()
         
-        poly = PolynomialFeatures(degree=3)
-        X_poly = poly.fit_transform(X)
+        # Prediksi Masa Depan: Menggunakan Regresi Linear khusus pada 20 Hari Terakhir (Momentum MA20)
+        # Ini mencegah prediksi terbang terlalu tinggi akibat anomali data 1 tahun.
+        data_20 = data.tail(20).copy()
+        data_20['Hari_Ke'] = np.arange(len(data_20))
+        
+        X = data_20[['Hari_Ke']].values
+        y = data_20['Close'].squeeze().values
         
         model = LinearRegression()
-        model.fit(X_poly, y)
+        model.fit(X, y)
         
         # Prediksi 7 hari ke depan
-        hari_terakhir = data['Hari_Ke'].iloc[-1]
+        hari_terakhir = data_20['Hari_Ke'].iloc[-1]
         hari_depan = np.array([[hari_terakhir + i] for i in range(1, 8)])
-        prediksi_harga = model.predict(poly.transform(hari_depan))
+        prediksi_harga = model.predict(hari_depan)
         
-        return data, prediksi_harga, data['Close'].iloc[-1].item()
+        return data, prediksi_harga, data['Close'].iloc[-1].item(), data['MA20'], data['MA50']
     except:
-        return None, None, None
+        return None, None, None, None, None
 
 # ---------------------------------------------------------
 # MENU 1: AI PREDIKSI (SPESIFIK)
 # ---------------------------------------------------------
-if menu == "📈 AI Prediksi (Spesifik)":
-    st.title("Mesin Prediksi Harga Saham (AI Lanjutan)")
-    st.write("Modul ini menggunakan **Polynomial Regression** untuk membaca gelombang tren masa lalu dan memprediksi fluktuasi (naik/turun) harga 7 hari ke depan.")
+if menu == "📈 Prediksi Berbasis MA (Spesifik)":
+    st.title("Analisis Tren MA20/MA50 & Prediksi AI")
+    st.write("Modul ini menampilkan tren **MA20 & MA50** historis, dan memprediksi masa depan berdasarkan momentum harga 20 hari terakhir agar lebih akurat dan realistis.")
     
-    ticker = st.text_input("Masukkan Kode Saham (Contoh: BBCA.JK atau NVDA):", "BBCA.JK").upper()
+    ticker = st.text_input("Masukkan Kode Saham (Contoh: ASII.JK atau NVDA):", "ASII.JK").upper()
     
-    if st.button("Jalankan Mesin AI"):
-        with st.spinner("AI sedang mempelajari gelombang grafik..."):
-            data, prediksi_harga, harga_skrg = hitung_prediksi_ai(ticker)
+    if st.button("Jalankan Analisis"):
+        with st.spinner("Menghitung rata-rata pergerakan..."):
+            data, prediksi_harga, harga_skrg, ma20, ma50 = hitung_prediksi_ai(ticker)
             
             if data is not None:
                 tanggal_depan = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=7)
                 
-                # Menghitung Detail Tabel
                 status_harian = []
                 selisih_harian = []
                 harga_kemarin = harga_skrg 
                 
                 for p in prediksi_harga:
                     selisih = p - harga_kemarin
-                    if selisih > 0:
-                        status_harian.append("🟢 Naik")
-                    elif selisih < 0:
-                        status_harian.append("🔴 Turun")
-                    else:
-                        status_harian.append("⚪ Tetap")
+                    if selisih > 0: status_harian.append("🟢 Naik")
+                    elif selisih < 0: status_harian.append("🔴 Turun")
+                    else: status_harian.append("⚪ Tetap")
                         
                     selisih_harian.append(f"{int(abs(selisih)):,}")
                     harga_kemarin = p 
                 
-                # Membuat Grafik
+                # --- MEMBUAT GRAFIK LENGKAP ---
                 fig = go.Figure()
-                fig.add_trace(go.Candlestick(x=data.index,
-                                open=data['Open'].squeeze(), 
-                                high=data['High'].squeeze(),
-                                low=data['Low'].squeeze(), 
-                                close=data['Close'].squeeze(),
-                                name="Harga Saham Asli"))
                 
+                # Candlestick
+                fig.add_trace(go.Candlestick(x=data.index,
+                                open=data['Open'].squeeze(), high=data['High'].squeeze(),
+                                low=data['Low'].squeeze(), close=data['Close'].squeeze(),
+                                name="Harga Saham"))
+                
+                # Garis MA20 (Kuning) dan MA50 (Ungu)
+                fig.add_trace(go.Scatter(x=data.index, y=ma20.squeeze(), mode='lines', name='MA20 (Tren Cepat)', line=dict(color='#FFD700', width=2)))
+                fig.add_trace(go.Scatter(x=data.index, y=ma50.squeeze(), mode='lines', name='MA50 (Tren Menengah)', line=dict(color='#9370DB', width=2)))
+                
+                # Garis Prediksi 7 Hari (Cyan Putus-putus)
                 tanggal_sambungan = [data.index[-1]] + list(tanggal_depan)
                 harga_sambungan = [harga_skrg] + list(prediksi_harga)
                 
                 fig.add_trace(go.Scatter(x=tanggal_sambungan, y=harga_sambungan, 
-                                         mode='lines+markers', name='🤖 Prediksi AI (7 Hari)', 
+                                         mode='lines+markers', name='🤖 Proyeksi Tren (7 Hari)', 
                                          line=dict(color='#00FFFF', width=3, dash='dot')))
                 
-                fig.update_layout(title=f"Prediksi Polynomial AI: {ticker}", xaxis_title="Tanggal",
+                fig.update_layout(title=f"Analisis MA & Proyeksi: {ticker}", xaxis_title="Tanggal",
                                   yaxis_title="Harga", template="plotly_dark", height=600)
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Menampilkan Tabel Detail
-                st.markdown("### 🔮 Detail Fluktuasi 7 Hari Kedepan")
+                st.markdown("### 🔮 Detail Proyeksi 7 Hari Kedepan")
                 df_prediksi = pd.DataFrame({
                     "Tanggal": [t.strftime('%d %B %Y') for t in tanggal_depan],
                     "Status": status_harian,
-                    "Prediksi Harga": [f"{int(p):,}" for p in prediksi_harga],
+                    "Estimasi Harga": [f"{int(p):,}" for p in prediksi_harga],
                     "Perubahan": selisih_harian
                 })
                 st.table(df_prediksi)
             else:
-                st.error("Data saham tidak ditemukan atau koneksi gagal.")
+                st.error("Data saham tidak ditemukan.")
 
 # ---------------------------------------------------------
 # MENU 2: SCANNER SAHAM NAIK (GLOBAL & ID)
 # ---------------------------------------------------------
 elif menu == "🔍 Scanner Saham Naik (Global & ID)":
-    st.title("🚀 Top Recommendations (Potensi Naik)")
-    st.write("Sistem memindai pasar untuk mencari tren positif 7 hari ke depan. Klik menu detail di bawah tiap saham untuk melihat prediksi harian.")
+    st.title("🚀 Top Recommendations (Berdasarkan Momentum 20 Hari)")
+    st.write("Sistem memindai pasar untuk mencari saham yang momentum 20 hari terakhirnya diprediksi terus naik untuk 7 hari ke depan.")
     
-    # Tombol Scan
-    if st.button("Mulai Pemindaian Pasar (Perbarui Data)"):
+    if st.button("Mulai Pemindaian Pasar"):
         rekomendasi_sementara = []
         progress_bar = st.progress(0)
         
         for i, t in enumerate(DAFTAR_SAHAM):
             progress_bar.progress((i + 1) / len(DAFTAR_SAHAM))
-            data, prediksi, harga_skrg = hitung_prediksi_ai(t)
+            data, prediksi, harga_skrg, ma20, ma50 = hitung_prediksi_ai(t)
             
-            if data is not None and prediksi[-1] > harga_skrg:
+            # Filter: Prediksi harga naik DAN harga saat ini lebih tinggi dari MA20 (Uptrend kuat)
+            if data is not None and prediksi[-1] > harga_skrg and harga_skrg > ma20.iloc[-1].item():
                 persen = ((prediksi[-1] - harga_skrg) / harga_skrg) * 100
                 
-                # --- MENYIAPKAN DATA TABEL UNTUK MENU KLIK ---
                 tanggal_depan = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=7)
                 status_harian = []
                 harga_kemarin = harga_skrg 
@@ -179,7 +175,6 @@ elif menu == "🔍 Scanner Saham Naik (Global & ID)":
         progress_bar.empty()
         st.session_state.hasil_scan = rekomendasi_sementara
         
-    # --- MENAMPILKAN HASIL DARI MEMORI ---
     if st.session_state.hasil_scan is not None:
         rekomendasi = st.session_state.hasil_scan
         
@@ -193,7 +188,6 @@ elif menu == "🔍 Scanner Saham Naik (Global & ID)":
                     st.write(f"Harga Skrg: **{item['harga']:,.2f}**")
                     st.write(f"Target (7H): **{item['prediksi']:,.2f}**")
                     
-                    # Grafik Mini
                     mini_fig = go.Figure()
                     mini_fig.add_trace(go.Scatter(y=item['data_hist'], mode='lines', line=dict(color='#39FF14', width=3)))
                     mini_fig.update_layout(xaxis_visible=False, yaxis_visible=False, height=80, margin=dict(l=0,r=0,t=0,b=0), template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
@@ -201,10 +195,9 @@ elif menu == "🔍 Scanner Saham Naik (Global & ID)":
                     
                     st.write(f"Potensi: :green[+{item['persen']:.2f}%]")
                     
-                    # Fitur Dropdown
                     with st.expander("📅 Lihat Tren & Tanggal"):
                         st.dataframe(item['tabel_detail'], hide_index=True, use_container_width=True)
                         
                     st.markdown("---")
         else:
-            st.warning("Belum ditemukan saham dengan sinyal kenaikan kuat.")
+            st.warning("Belum ditemukan saham yang momentum MA20-nya sedang kuat hari ini.")
